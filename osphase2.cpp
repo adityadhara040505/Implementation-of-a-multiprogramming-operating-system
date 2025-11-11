@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <thread>
 #include <chrono>
+#include <ctime>
 
 using namespace std;
 
@@ -129,8 +130,14 @@ private:
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
         string data;
         getline(infile, data);
-        if (data[0] == '$' && data[1] == 'E' && data[2] == 'N' && data[3] == 'D')
+        if (data.size() >= 4 && data.substr(0, 4) == "$END")
         {
+            pcb.TTC--;
+            TERMINATE(1);
+            return;
+        }
+        if (data.size() == 0) {
+            // treat empty line as out-of-data to avoid out-of-range access
             pcb.TTC--;
             TERMINATE(1);
             return;
@@ -220,8 +227,23 @@ private:
             string s;
             while (getline(infile, s))
             {
-                if (s[0] == '$' && s[1] == 'A' && s[2] == 'M' && s[3] == 'J')
+                if (s.size() >= 4 && s.substr(0,4) == "$AMJ")
                 {
+                    // validate header length and digits before parsing
+                    if (s.size() < 16)
+                    {
+                        cout << "Malformed $AMJ header (too short). Skipping.\n";
+                        continue;
+                    }
+                    bool ok = true;
+                    for (int i = 4; i <= 15; ++i)
+                        if (!isdigit(static_cast<unsigned char>(s[i]))) ok = false;
+                    if (!ok)
+                    {
+                        cout << "Malformed $AMJ header (non-digit fields). Skipping.\n";
+                        continue;
+                    }
+
                     INIT();
                     cout << "New Job started\n";
                     std::this_thread::sleep_for(std::chrono::milliseconds(700));
@@ -238,7 +260,7 @@ private:
                     cout << "jobID: " << pcb.jobID << "\nTTL: " << pcb.TTL << "\nTLL: " << pcb.TLL << "\n";
                 }
 
-                else if (s.substr(0, 4) == "$DTA")
+                else if (s.size() >= 4 && s.substr(0, 4) == "$DTA")
                 {
                     cout << "Data card loading\n";
                     std::this_thread::sleep_for(std::chrono::milliseconds(700));
@@ -246,7 +268,7 @@ private:
                     STARTEXECUTION();
                 }
 
-                else if (s.substr(0, 4) == "$END")
+                else if (s.size() >= 4 && s.substr(0, 4) == "$END")
                 {
                     cout << "END of Job\n";
                     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -419,6 +441,13 @@ private:
 public:
     OS2()
     {
+        // seed random for page allocation (change to fixed seed for reproducible runs if needed)
+        srand((unsigned)time(nullptr));
+
+        // clear previous output so runs are deterministic for users
+        outfile.open("out.txt", ios::trunc);
+        outfile.close();
+
         infile.open("x.txt", ios::in);
         INIT();
         LOAD();
